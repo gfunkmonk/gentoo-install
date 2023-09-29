@@ -26,6 +26,9 @@ USED_ZFS=false
 # Flag to track usage of btrfs
 USED_BTRFS=false
 # Flag to track usage of encryption
+USED_JFS=false
+USED_REISERFS=false
+USED_XFS=false
 USED_ENCRYPTION=false
 # Flag to track whether partitioning or formatting is forbidden
 NO_PARTITIONING_OR_FORMATTING=false
