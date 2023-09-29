@@ -78,7 +78,9 @@ function configure_portage() {
 	touch_or_die 0644 "/etc/portage/package.keywords/zz-autounmask"
 	touch_or_die 0644 "/etc/portage/package.license"
 
-	printf 'COMMON_FLAGS="-march=native -02 -pipe"' > /etc/portage/make.conf
+	MARCH="$(gcc -v -E -x c -march=native -mtune=native - < /dev/null 2>&1 | grep cc1 | awk '{print $6}' | awk -F '=' '{print $2}')"
+
+	printf 'COMMON_FLAGS="-march=${MARCH} -02 -pipe"' > /etc/portage/make.conf
         printf "\n" >> /etc/portage/make.conf
         printf 'CFLAGS="${COMMON_FLAGS}"' >> /etc/portage/make.conf
         printf "\n" >> /etc/portage/make.conf
@@ -99,14 +101,48 @@ function configure_portage() {
 	printf 'L10N="en en-US"' >> /etc/portage/make.conf
         printf "\n" >> /etc/portage/make.conf
         printf "\n" >> /etc/portage/make.conf
-	printf 'MAKE_OPTS="--jobs=2 --load-average=2.95"' >> /etc/portage/make.conf
+	printf 'MAKEOPTS="--jobs=2 --load-average=2.95"' >> /etc/portage/make.conf
 	printf "\n" >> /etc/portage/make.conf
-	printf 'EMERGE_DEFAULT_OPTS="--jobs=3 --load-average=4.95"' >> /etc/portage/make.conf
+	printf 'EMERGE_DEFAULT_OPTS="--binpkg-respect-use=y --getbinpkg=y --jobs=3 --load-average=4.95"' >> /etc/portage/make.conf
 	printf "\n" >> /etc/portage/make.conf
 	printf 'FEATURES="candy parallel-fetch parallel-install"' >> /etc/portage/make.conf
 	printf "\n" >> /etc/portage/make.conf
 	printf 'USE="lto pgo"' >> /etc/portage/make.conf
 
+	printf "[redcore]" > /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "priority = 9999" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "sync-uri = http://mirrors.redcorelinux.org/redcorelinux/amd64/packages/" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "[redcore-next]" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "priority = 9995" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "sync-uri = http://mirrors.redcorelinux.org/redcorelinux/amd64/packages-next/" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "[calculate]" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "priority = 9999" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "sync-uri = https://stage4linux.com/mirrors/calculate/grp/x86_64/" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "[jaypahn]" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "priority = 9997" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "sync-uri = https://ftp.jaist.ac.jp/pub/Linux/Gentoo/experimental/amd64/binpkg/default/linux/17.1/x86-64/" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "[experimental]" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "priority = 9996" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
+	printf "sync-uri = https://gentoo.osuosl.org/experimental/amd64/binpkg/default/linux/17.1/x86-64/" >> /etc/portage/binrepos.conf
+	printf "\n" >> /etc/portage/binrepos.conf
 
 	if [[ $SELECT_MIRRORS == "true" ]]; then
 		einfo "Temporarily installing mirrorselect"
