@@ -89,6 +89,42 @@ function configure_portage() {
 		try mirrorselect "${mirrorselect_params[@]}"
 	fi
 
+	printf 'MAKE_OPTS="-j1 -l2"' >> /etc/portage/make.conf
+	printf 'EMERGE_DEFAULT_OPTS="--jobs=2 --load-average=1"' >> /etc/portage/make.conf
+
+	# outputs number of CPU coress (with hyperthreading)
+	count_cpu() {
+        	grep -c processor /proc/cpuinfo || \
+                	 die "Error getting number of cpu"
+
+	}
+
+	# get location of make.conf
+	get_make() {
+        	if [ -e /etc/make.conf ]; then
+                	echo '/etc/make.conf'
+        	elif [ -e /etc/portage/make.conf ]; then
+                	echo '/etc/portage/make.conf'
+        	else
+                	die "make.conf not found"
+        	fi
+	}
+
+	sed_make() {
+        	local countC=$(count_cpu)
+        	sed -i -r \
+        	        -e "s/^([[:space:]]*MAKEOPTS=.*)(["\""'[[:space:]])(-j|--jobs=)[1-9][0-9]*(["\""'[[:space:]])/\1\2\3$(($countC+1))\4/" \
+        	        -e "s/^([[:space:]]*MAKEOPTS=.*)(["\""'[[:space:]])(-l)[1-9][0-9]*\.?[0-9]*(["\""'[[:space:]])/\1\2\3$(($countC-1))\.95\4/" \
+               		-e "s/^([[:space:]]*EMERGE_DEFAULT_OPTS=.*)(["\""'[[:space:]])(-j|--jobs=)[1-9][0-9]*(["\""'[[:space:]])/\1\2\3${countC}\4/" \
+                	-e "s/^([[:space:]]*EMERGE_DEFAULT_OPTS=.*)(["\""'[[:space:]])(--load-average=)[1-9][0-9]*\.?[0-9]*(["\""'[[:space:]])/\1\2\3$(($countC-1))\.85\4/" \
+                	$(get_make) || die "sed on make.conf failed"
+        	echo "make.conf processed for ${countC} cpu"
+	}
+
+	# modify make.conf
+	sed_make
+
+
 	chmod 644 /etc/portage/make.conf \
 		|| die "Could not chmod 644 /etc/portage/make.conf"
 }
@@ -123,6 +159,12 @@ function generate_initramfs() {
 		&& modules+=("mdraid")
 	[[ $USED_LUKS == "true" ]] \
 		&& modules+=("crypt crypt-gpg")
+	[[ $USED_JFS == "true" ]] \
+		&& modules+=("jfs")
+	[[ $USED_XFS == "true" ]] \
+		&& modules+=("xfs")
+	[[ $USED_REISERFSFS == "true" ]] \
+		&& modules+=("reiserfs")
 	[[ $USED_BTRFS == "true" ]] \
 		&& modules+=("btrfs")
 	[[ $USED_ZFS == "true" ]] \
@@ -354,7 +396,7 @@ function main_install_gentoo_in_chroot() {
 
 	# Install git (for git portage overlays)
 	einfo "Installing git"
-	try emerge --verbose dev-vcs/git
+	try emerge --verbose dev-vcs/git app-eselect/eselect-repository
 
 	if [[ "$PORTAGE_SYNC_TYPE" == "git" ]]; then
 		mkdir_or_die 0755 "/etc/portage/repos.conf"
@@ -399,6 +441,24 @@ EOF
 	if [[ $USED_LUKS == "true" ]]; then
 		einfo "Installing cryptsetup"
 		try emerge --verbose sys-fs/cryptsetup
+	fi
+
+	# Install jfsutils if we used jfs
+	if [[ $USED_BTRFS == "true" ]]; then
+		einfo "Installing jfsutils"
+		try emerge --verbose sys-fs/jfsutils
+	fi
+
+	# Install xfsprogs if we used xfs
+	if [[ $USED_XFS == "true" ]]; then
+		einfo "Installing xfsprogs"
+		try emerge --verbose sys-fs/xfsprogs
+	fi
+
+	# Install reiserfsprogs if we used reiserfs
+	if [[ $USED_REISERFS == "true" ]]; then
+		einfo "Installing reiserfsprogs"
+		try emerge --verbose sys-fs/reiserfsprogs
 	fi
 
 	# Install btrfs-progs if we used btrfs

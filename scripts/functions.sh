@@ -428,6 +428,33 @@ function disk_format() {
 					|| die "Could not format device '$device' ($id)"
 			fi
 			;;
+               'jfs')
+                        if [[ -v "arguments[label]" ]]; then
+                                mkfs.jfs -q -V "$label" "$device" \
+                                        || die "Could not format device '$device' ($id)"
+                        else
+                                mkfs.jfs -q "$device" \
+                                        || die "Could not format device '$device' ($id)"
+                        fi
+                        ;;
+                'xfs')
+                        if [[ -v "arguments[label]" ]]; then
+                                mkfs.xfs -q -L "$label" "$device" \
+                                        || die "Could not format device '$device' ($id)"
+                        else
+                                mkfs.xfs -q "$device" \
+                                        || die "Could not format device '$device' ($id)"
+                        fi
+                        ;;
+                'reiserfs')
+                        if [[ -v "arguments[label]" ]]; then
+                                mkfs.reiserfs -q -l "$label" "$device" \
+                                        || die "Could not format device '$device' ($id)"
+                        else
+                                mkfs.reiserfs -q "$device" \
+                                        || die "Could not format device '$device' ($id)"
+                        fi
+                        ;;
 		'btrfs')
 			if [[ -v "arguments[label]" ]]; then
 				mkfs.btrfs -q -L "$label" "$device" \

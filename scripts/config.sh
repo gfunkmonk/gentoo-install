@@ -232,7 +232,7 @@ function create_dummy() {
 
 # Named arguments:
 # id:     Id of the device / partition created earlier
-# type:   One of (bios, efi, swap, ext4)
+# type:   One of (bios, efi, swap, ext4, jfs, xfs, reiserfs)
 # label:  The label for the formatted disk
 function format() {
 	local known_arguments=('+id' '+type' '?label')
@@ -240,7 +240,22 @@ function format() {
 	declare -A arguments; parse_arguments "$@"
 
 	verify_existing_id id
-	verify_option type bios efi swap ext4 btrfs
+	verify_option type bios efi swap ext4 jfs xfs reiserfs btrfs
+
+	local type="${arguments[type]}"
+	if [[ "$type" == "jfs" ]]; then
+		USED_JFS=true
+	fi
+
+	local type="${arguments[type]}"
+	if [[ "$type" == "xfs" ]]; then
+		USED_XFS=true
+	fi
+
+	local type="${arguments[type]}"
+	if [[ "$type" == "reiserfs" ]]; then
+		USED_REISERFS=true
+	fi
 
 	local type="${arguments[type]}"
 	if [[ "$type" == "btrfs" ]]; then
@@ -342,6 +357,15 @@ function create_classic_single_disk_layout() {
 	elif [[ $root_fs == "ext4" ]]; then
 		DISK_ID_ROOT_TYPE="ext4"
 		DISK_ID_ROOT_MOUNT_OPTS="defaults,noatime,errors=remount-ro,discard"
+        elif [[ $root_fs == "jfs" ]]; then
+                DISK_ID_ROOT_TYPE="jfs"
+                DISK_ID_ROOT_MOUNT_OPTS="defaults,nodiratime,noatime,nofail"
+        elif [[ $root_fs == "xfs" ]]; then
+                DISK_ID_ROOT_TYPE="xfs"
+                DISK_ID_ROOT_MOUNT_OPTS="discard,noatime,largeio,inode64,swalloc,allocsize=64M"
+        elif [[ $root_fs == "reiserfs" ]]; then
+                DISK_ID_ROOT_TYPE="reiserfs"
+                DISK_ID_ROOT_MOUNT_OPTS="defaults,notail,user_xattr,acl"
 	else
 		die "Unsupported root filesystem type"
 	fi
@@ -491,6 +515,15 @@ function create_raid0_luks_layout() {
 	elif [[ $root_fs == "btrfs" ]]; then
 		DISK_ID_ROOT_TYPE="ext4"
 		DISK_ID_ROOT_MOUNT_OPTS="defaults,noatime,errors=remount-ro,discard"
+        elif [[ $root_fs == "jfs" ]]; then
+                DISK_ID_ROOT_TYPE="jfs"
+                DISK_ID_ROOT_MOUNT_OPTS="defaults,nodiratime,noatime,nofail"
+        elif [[ $root_fs == "xfs" ]]; then
+                DISK_ID_ROOT_TYPE="xfs"
+                DISK_ID_ROOT_MOUNT_OPTS="discard,noatime,largeio,inode64,swalloc,allocsize=64M"
+        elif [[ $root_fs == "reiserfs" ]]; then
+                DISK_ID_ROOT_TYPE="reiserfs"
+                DISK_ID_ROOT_MOUNT_OPTS="defaults,notail,user_xattr,acl"
 	else
 		die "Unsupported root filesystem type"
 	fi

@@ -14,10 +14,11 @@ umask 0077
 # Export variables (used to determine processor count by some applications)
 export NPROC="$(nproc || echo 2)"
 export NPROC_ONE="$((NPROC + 1))"
+export NPROC_TWO="$((NPROC + 2))"
 
 # Set default makeflags and emerge flags for parallel emerges
-export MAKEFLAGS="-j$NPROC"
-export EMERGE_DEFAULT_OPTS="--jobs=$NPROC_ONE --load-average=$NPROC"
+export MAKEFLAGS="-j$NPROC -l$NPROC_ONE"
+export EMERGE_DEFAULT_OPTS="--jobs=$NPROC_TWO --load-average=$NPROC_ONE"
 
 # Unset critical variables
 unset key

@@ -215,7 +215,7 @@ PARTITIONING_BOOT_TYPES=(
 	"efi" "efi$([[ $HAS_EFI_SUPPORT == true ]] && echo -n "" || echo -n " (!! $EFI_UNSUPPORTED_MESSAGE_SHORT !!)")"
 	"bios" "bios"
 )
-PARTITIONING_ROOT_FS_TYPES=("ext4" "btrfs")
+PARTITIONING_ROOT_FS_TYPES=("ext4" "jfs" "xfs" "reiserfs" "btrfs")
 PARTITIONING_BTRFS_RAID_TYPES=("raid0" "raid1")
 PARTITIONING_ZFS_POOL_TYPES=("standard" "custom")
 PARTITIONING_ZFS_COMPRESSIONS=("on" "gzip" "lz4" "lzjb" "zle" "zstd" "zstd-fast")
