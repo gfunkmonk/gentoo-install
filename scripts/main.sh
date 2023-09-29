@@ -89,8 +89,9 @@ function configure_portage() {
 		try mirrorselect "${mirrorselect_params[@]}"
 	fi
 
-	printf 'MAKE_OPTS="-j1 -l2"' >> /etc/portage/make.conf
-	printf 'EMERGE_DEFAULT_OPTS="--jobs=2 --load-average=1"' >> /etc/portage/make.conf
+	printf 'MAKE_OPTS="-j2 -l3"' >> /etc/portage/make.conf
+	printf "\n" >> /etc/portage/make.conf
+	printf 'EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=5.95"' >> /etc/portage/make.conf
 
 	# outputs number of CPU coress (with hyperthreading)
 	count_cpu() {
