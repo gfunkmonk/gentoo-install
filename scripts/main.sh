@@ -78,6 +78,36 @@ function configure_portage() {
 	touch_or_die 0644 "/etc/portage/package.keywords/zz-autounmask"
 	touch_or_die 0644 "/etc/portage/package.license"
 
+	printf 'COMMON_FLAGS="-march=native -02 -pipe"' > /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+        printf 'CFLAGS="${COMMON_FLAGS}"' >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+        printf 'CXXFLAGS="${COMMON_FLAGS}"' >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+        printf 'FCFLAGS="${COMMON_FLAGS}"' >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+        printf 'FFLAGS="${COMMON_FLAGS}"' >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+	printf 'LDFLAGS="-Wl,-O1 -Wl,--as-needed -Wl,-z,pack-relative-relocs"' >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+	printf "LC_MESSAGES=C.utf8" >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+	printf 'LINGUAS="en en_US"' >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+	printf 'L10N="en en-US"' >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+        printf "\n" >> /etc/portage/make.conf
+	printf 'MAKE_OPTS="--jobs=2 --load-average=2.95"' >> /etc/portage/make.conf
+	printf "\n" >> /etc/portage/make.conf
+	printf 'EMERGE_DEFAULT_OPTS="--jobs=3 --load-average=4.95"' >> /etc/portage/make.conf
+	printf "\n" >> /etc/portage/make.conf
+	printf 'FEATURES="candy parallel-fetch parallel-install"' >> /etc/portage/make.conf
+	printf "\n" >> /etc/portage/make.conf
+	printf 'USE="lto pgo"' >> /etc/portage/make.conf
+
+
 	if [[ $SELECT_MIRRORS == "true" ]]; then
 		einfo "Temporarily installing mirrorselect"
 		try emerge --verbose --oneshot app-portage/mirrorselect
@@ -88,10 +118,6 @@ function configure_portage() {
 			&& mirrorselect_params+=("-D")
 		try mirrorselect "${mirrorselect_params[@]}"
 	fi
-
-	printf 'MAKE_OPTS="-j2 -l3"' >> /etc/portage/make.conf
-	printf "\n" >> /etc/portage/make.conf
-	printf 'EMERGE_DEFAULT_OPTS="--jobs=4 --load-average=5.95"' >> /etc/portage/make.conf
 
 	# outputs number of CPU coress (with hyperthreading)
 	count_cpu() {
@@ -164,7 +190,7 @@ function generate_initramfs() {
 		&& modules+=("jfs")
 	[[ $USED_XFS == "true" ]] \
 		&& modules+=("xfs")
-	[[ $USED_REISERFSFS == "true" ]] \
+	[[ $USED_REISERFS == "true" ]] \
 		&& modules+=("reiserfs")
 	[[ $USED_BTRFS == "true" ]] \
 		&& modules+=("btrfs")
@@ -445,7 +471,7 @@ EOF
 	fi
 
 	# Install jfsutils if we used jfs
-	if [[ $USED_BTRFS == "true" ]]; then
+	if [[ $USED_JFS == "true" ]]; then
 		einfo "Installing jfsutils"
 		try emerge --verbose sys-fs/jfsutils
 	fi
