@@ -27,7 +27,7 @@ function check_config() {
 			|| die "Using OpenRC requires a non-systemd stage3 archive!"
 	fi
 
-	# Check hostname per RFC1123
+ 	# Check hostname per RFC1123
 	local hostname_regex='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
 	[[ $HOSTNAME =~ $hostname_regex ]] \
 		|| die "'$HOSTNAME' is not a valid hostname"
@@ -980,7 +980,12 @@ function gentoo_chroot() {
 	install --mode=0644 /etc/resolv.conf "$chroot_dir/etc/resolv.conf" \
 		|| die "Could not copy resolv.conf"
 
-	# Mount virtual filesystems
+ 	printf "sleep 1" > /tmp/locale-gen
+ 	if [[ "$STAGE3_BASENAME" == *musl* ]]
+	    then install --mode=0755 /tmp/locale-gen "$chroot_dir/bin/locale-gen"
+	fi
+
+ 	# Mount virtual filesystems
 	einfo "Mounting virtual filesystems"
 	(
 		mountpoint -q -- "$chroot_dir/proc" || mount -t proc /proc "$chroot_dir/proc" || exit 1
