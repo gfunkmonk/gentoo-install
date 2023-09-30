@@ -30,6 +30,7 @@ USED_JFS=false
 USED_REISERFS=false
 USED_XFS=false
 USED_ENCRYPTION=false
+USED_MUSL=false
 # Flag to track whether partitioning or formatting is forbidden
 NO_PARTITIONING_OR_FORMATTING=false
 
