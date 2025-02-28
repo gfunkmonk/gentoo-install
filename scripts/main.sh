@@ -13,11 +13,16 @@ function install_stage3() {
 }
 
 function configure_base_system() {
-	einfo "Generating locales"
-	echo "$LOCALES" > /etc/locale.gen \
-		|| die "Could not write /etc/locale.gen"
-	locale-gen \
-		|| die "Could not generate locales"
+	if [[ $MUSL == "true" ]]; then
+		einfo "Installing musl-locales"
+		try emerge --verbose sys-apps/musl-locales
+	else
+		einfo "Generating locales"
+		echo "$LOCALES" > /etc/locale.gen \
+			|| die "Could not write /etc/locale.gen"
+		locale-gen \
+			|| die "Could not generate locales"
+	fi
 
 	if [[ $SYSTEMD == "true" ]]; then
 		einfo "Setting machine-id"
@@ -49,12 +54,19 @@ function configure_base_system() {
 			|| die "Could not sed replace in /etc/conf.d/hostname"
 
 		# Set timezone
-		einfo "Selecting timezone"
-		echo "$TIMEZONE" > /etc/timezone \
-			|| die "Could not write /etc/timezone"
-		chmod 644 /etc/timezone \
-			|| die "Could not set correct permissions for /etc/timezone"
-		try emerge -v --config sys-libs/timezone-data
+		if [[ $MUSL == "true" ]]; then
+			try emerge -v sys-libs/timezone-data
+			einfo "Selecting timezone"
+			echo -e "\nTZ=\"$TIMEZONE\"" >> /etc/env.d/00local \
+				|| die "Could not write to /etc/env.d/00local"
+		else
+			einfo "Selecting timezone"
+			echo "$TIMEZONE" > /etc/timezone \
+				|| die "Could not write /etc/timezone"
+			chmod 644 /etc/timezone \
+				|| die "Could not set correct permissions for /etc/timezone"
+			try emerge -v --config sys-libs/timezone-data
+		fi
 
 		# Set keymap
 		einfo "Selecting keymap"
@@ -78,72 +90,6 @@ function configure_portage() {
 	touch_or_die 0644 "/etc/portage/package.keywords/zz-autounmask"
 	touch_or_die 0644 "/etc/portage/package.license"
 
-	MARCH="$(gcc -v -E -x c -march=native -mtune=native - < /dev/null 2>&1 | grep cc1 | awk '{print $6}' | awk -F '=' '{print $2}')"
-
-	printf 'COMMON_FLAGS="-march=${MARCH} -02 -pipe"' > /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-        printf 'CFLAGS="${COMMON_FLAGS}"' >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-        printf 'CXXFLAGS="${COMMON_FLAGS}"' >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-        printf 'FCFLAGS="${COMMON_FLAGS}"' >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-        printf 'FFLAGS="${COMMON_FLAGS}"' >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-	printf 'LDFLAGS="-Wl,-O1 -Wl,--as-needed -Wl,-z,pack-relative-relocs"' >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-	printf "LC_MESSAGES=C.utf8" >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-	printf 'LINGUAS="en en_US"' >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-	printf 'L10N="en en-US"' >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-        printf "\n" >> /etc/portage/make.conf
-	printf 'MAKEOPTS="--jobs=2 --load-average=2.95"' >> /etc/portage/make.conf
-	printf "\n" >> /etc/portage/make.conf
-	printf 'EMERGE_DEFAULT_OPTS="--binpkg-respect-use=y --getbinpkg=y --jobs=3 --load-average=4.95"' >> /etc/portage/make.conf
-	printf "\n" >> /etc/portage/make.conf
-	printf 'FEATURES="candy parallel-fetch parallel-install"' >> /etc/portage/make.conf
-	printf "\n" >> /etc/portage/make.conf
-	printf 'USE="lto pgo"' >> /etc/portage/make.conf
-
-	printf "[redcore]" > /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "priority = 9999" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "sync-uri = http://mirrors.redcorelinux.org/redcorelinux/amd64/packages/" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "[redcore-next]" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "priority = 9995" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "sync-uri = http://mirrors.redcorelinux.org/redcorelinux/amd64/packages-next/" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "[calculate]" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "priority = 9999" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "sync-uri = https://stage4linux.com/mirrors/calculate/grp/x86_64/" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "[jaypahn]" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "priority = 9997" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "sync-uri = https://ftp.jaist.ac.jp/pub/Linux/Gentoo/experimental/amd64/binpkg/default/linux/17.1/x86-64/" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "[experimental]" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "priority = 9996" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-	printf "sync-uri = https://gentoo.osuosl.org/experimental/amd64/binpkg/default/linux/17.1/x86-64/" >> /etc/portage/binrepos.conf
-	printf "\n" >> /etc/portage/binrepos.conf
-
 	if [[ $SELECT_MIRRORS == "true" ]]; then
 		einfo "Temporarily installing mirrorselect"
 		try emerge --verbose --oneshot app-portage/mirrorselect
@@ -155,38 +101,11 @@ function configure_portage() {
 		try mirrorselect "${mirrorselect_params[@]}"
 	fi
 
-	# outputs number of CPU coress (with hyperthreading)
-	count_cpu() {
-        	grep -c processor /proc/cpuinfo || \
-                	 die "Error getting number of cpu"
-
-	}
-
-	# get location of make.conf
-	get_make() {
-        	if [ -e /etc/make.conf ]; then
-                	echo '/etc/make.conf'
-        	elif [ -e /etc/portage/make.conf ]; then
-                	echo '/etc/portage/make.conf'
-        	else
-                	die "make.conf not found"
-        	fi
-	}
-
-	sed_make() {
-        	local countC=$(count_cpu)
-        	sed -i -r \
-        	        -e "s/^([[:space:]]*MAKEOPTS=.*)(["\""'[[:space:]])(-j|--jobs=)[1-9][0-9]*(["\""'[[:space:]])/\1\2\3$(($countC+1))\4/" \
-        	        -e "s/^([[:space:]]*MAKEOPTS=.*)(["\""'[[:space:]])(-l)[1-9][0-9]*\.?[0-9]*(["\""'[[:space:]])/\1\2\3$(($countC-1))\.95\4/" \
-               		-e "s/^([[:space:]]*EMERGE_DEFAULT_OPTS=.*)(["\""'[[:space:]])(-j|--jobs=)[1-9][0-9]*(["\""'[[:space:]])/\1\2\3${countC}\4/" \
-                	-e "s/^([[:space:]]*EMERGE_DEFAULT_OPTS=.*)(["\""'[[:space:]])(--load-average=)[1-9][0-9]*\.?[0-9]*(["\""'[[:space:]])/\1\2\3$(($countC-1))\.85\4/" \
-                	$(get_make) || die "sed on make.conf failed"
-        	echo "make.conf processed for ${countC} cpu"
-	}
-
-	# modify make.conf
-	sed_make
-
+	if [[ $ENABLE_BINPKG == "true" ]]; then
+		echo 'FEATURES="getbinpkg binpkg-request-signature"' >> /etc/portage/make.conf
+		getuto
+		chmod 644 /etc/portage/gnupg/pubring.kbx
+	fi
 
 	chmod 644 /etc/portage/make.conf \
 		|| die "Could not chmod 644 /etc/portage/make.conf"
@@ -224,10 +143,10 @@ function generate_initramfs() {
 		&& modules+=("crypt crypt-gpg")
 	[[ $USED_JFS == "true" ]] \
 		&& modules+=("jfs")
-	[[ $USED_XFS == "true" ]] \
-		&& modules+=("xfs")
 	[[ $USED_REISERFS == "true" ]] \
 		&& modules+=("reiserfs")
+	[[ $USED_XFS == "true" ]] \
+		&& modules+=("xfs")
 	[[ $USED_BTRFS == "true" ]] \
 		&& modules+=("btrfs")
 	[[ $USED_ZFS == "true" ]] \
@@ -298,36 +217,65 @@ function install_kernel_efi() {
 
 	# Copy kernel to EFI
 	local kernel_file
-	kernel_file="$(find "/boot" -name "vmlinuz-*" -printf '%f\n' | sort -V | tail -n 1)" \
+	kernel_file="$(find "/boot" \( -name "vmlinuz-*" -or -name 'kernel-*' \) -printf '%f\n' | sort -V | tail -n 1)" \
 		|| die "Could not list newest kernel file"
 
-	cp "/boot/$kernel_file" "/boot/efi/vmlinuz.efi" \
-		|| die "Could not copy kernel to EFI partition"
+	try cp "/boot/$kernel_file" "/boot/efi/vmlinuz.efi"
 
 	# Generate initramfs
 	generate_initramfs "/boot/efi/initramfs.img"
 
 	# Create boot entry
-	einfo "Creating efi boot entry"
+	einfo "Creating EFI boot entry"
 	local efipartdev
 	efipartdev="$(resolve_device_by_id "$DISK_ID_EFI")" \
 		|| die "Could not resolve device with id=$DISK_ID_EFI"
 	efipartdev="$(realpath "$efipartdev")" \
 		|| die "Error in realpath '$efipartdev'"
+
+	# Get the sysfs path to EFI partition
 	local sys_efipart
 	sys_efipart="/sys/class/block/$(basename "$efipartdev")" \
-		|| die "Could not construct /sys path to efi partition"
+		|| die "Could not construct /sys path to EFI partition"
+
+	# Extract partition number, handling both standard and RAID cases
 	local efipartnum
-	efipartnum="$(cat "$sys_efipart/partition")" \
-		|| die "Failed to find partition number for EFI partition $efipartdev"
-	local gptdev
-	gptdev="/dev/$(basename "$(readlink -f "$sys_efipart/..")")" \
-		|| die "Failed to find parent device for EFI partition $efipartdev"
-	if [[ ! -e "$gptdev" ]] || [[ -z "$gptdev" ]]; then
-		gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_EFI]}")" \
-			|| die "Could not resolve device with id=${DISK_ID_PART_TO_GPT_ID[$DISK_ID_EFI]}"
+	if [[ -e "$sys_efipart/partition" ]]; then
+		efipartnum="$(cat "$sys_efipart/partition")" \
+			|| die "Failed to find partition number for EFI partition $efipartdev"
+	else
+		efipartnum="1" # Assume partition 1 if not found, common for RAID-based EFI
+		einfo "Assuming partition 1 for RAID-based EFI on device $efipartdev"
 	fi
-	try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "gentoo" --loader '\vmlinuz.efi' --unicode 'initrd=\initramfs.img'" $(get_cmdline)"
+
+	# Identify the parent block device and create EFI boot entry
+	local gptdev
+	if mdadm --detail --scan "$efipartdev" | grep -qE "^ARRAY $efipartdev " && [[ "$efipartdev" =~ ^/dev/md[0-9]+$ ]]; then
+		# RAID 1 case: Create EFI boot entries for each RAID member
+		local raid_members
+		raid_members=($(mdadm --detail "$efipartdev" | sed -n 's|.*active sync[^/]*\(/dev/[^ ]*\).*|\1|p' | sort))
+
+		if [[ ${#raid_members[@]} -eq 0 ]]; then
+			die "RAID setup detected, but no valid member disks found for $efipartdev"
+		fi
+
+		einfo "RAID detected. RAID members: ${raid_members[*]}"
+
+		for disk in "${raid_members[@]}"; do
+			gptdev="$disk"
+			einfo "Adding EFI boot entry for RAID member: $gptdev"
+			try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "gentoo" --loader '\vmlinuz.efi' --unicode "initrd=\\initramfs.img $(get_cmdline)"
+		done
+	else
+		# Non-RAID case: Create a single EFI boot entry
+		gptdev="/dev/$(basename "$(readlink -f "$sys_efipart/..")")" \
+			|| die "Failed to find parent device for EFI partition $efipartdev"
+		if [[ ! -e "$gptdev" ]] || [[ -z "$gptdev" ]]; then
+			gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_EFI]}")" \
+				|| die "Could not resolve device with id=${DISK_ID_PART_TO_GPT_ID[$DISK_ID_EFI]}"
+		fi
+		try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "gentoo" --loader '\vmlinuz.efi' --unicode 'initrd=\initramfs.img'" $(get_cmdline)"
+	fi
 
 	# Create script to repeat adding efibootmgr entry
 	cat > "/boot/efi/efibootmgr_add_entry.sh" <<EOF
@@ -355,11 +303,10 @@ function install_kernel_bios() {
 
 	# Link kernel to known name
 	local kernel_file
-	kernel_file="$(find "/boot" -name "vmlinuz-*" -printf '%f\n' | sort -V | tail -n 1)" \
+	kernel_file="$(find "/boot" \( -name "vmlinuz-*" -or -name 'kernel-*' \) -printf '%f\n' | sort -V | tail -n 1)" \
 		|| die "Could not list newest kernel file"
 
-	cp "/boot/$kernel_file" "/boot/bios/vmlinuz-current" \
-		|| die "Could copy kernel to /boot/bios/vmlinuz-current"
+	try cp "/boot/$kernel_file" "/boot/bios/vmlinuz-current"
 
 	# Generate initramfs
 	generate_initramfs "/boot/bios/initramfs.img"
@@ -433,6 +380,16 @@ function main_install_gentoo_in_chroot() {
 	passwd -d root \
 		|| die "Could not change root password"
 
+	# Sync portage
+	einfo "Syncing portage tree"
+	try emerge-webrsync
+
+	# Install mdadm if we used RAID (needed for UUID resolving)
+	if [[ $USED_RAID == "true" ]]; then
+		einfo "Installing mdadm"
+		try emerge --verbose sys-fs/mdadm
+	fi
+
 	if [[ $IS_EFI == "true" ]]; then
 		# Mount efi partition
 		mount_efivars
@@ -443,10 +400,6 @@ function main_install_gentoo_in_chroot() {
 		einfo "Mounting bios partition"
 		mount_by_id "$DISK_ID_BIOS" "/boot/bios"
 	fi
-
-	# Sync portage
-	einfo "Syncing portage tree"
-	try emerge-webrsync
 
 	# Configure basic system things like timezone, locale, ...
 	maybe_exec 'before_configure_base_system'
@@ -459,7 +412,7 @@ function main_install_gentoo_in_chroot() {
 
 	# Install git (for git portage overlays)
 	einfo "Installing git"
-	try emerge --verbose dev-vcs/git app-eselect/eselect-repository
+	try emerge --verbose dev-vcs/git
 
 	if [[ "$PORTAGE_SYNC_TYPE" == "git" ]]; then
 		mkdir_or_die 0755 "/etc/portage/repos.conf"
@@ -490,20 +443,26 @@ EOF
 	# Install authorized_keys before dracut, which might need them for remote unlocking.
 	install_authorized_keys
 
-	# Install required programs and kernel now, in oder to
+	einfo "Enabling dracut USE flag on sys-kernel/installkernel"
+	echo "sys-kernel/installkernel dracut" > /etc/portage/package.use/installkernel \
+		|| die "Could not write /etc/portage/package.use/installkernel"
+
+	# Install required programs and kernel now, in order to
 	# prevent emerging module before an imminent kernel upgrade
 	try emerge --verbose sys-kernel/dracut sys-kernel/gentoo-kernel-bin app-arch/zstd
 
-	# Install mdadm if we used raid (needed for uuid resolving)
-	if [[ $USED_RAID == "true" ]]; then
-		einfo "Installing mdadm"
-		try emerge --verbose sys-fs/mdadm
-	fi
-
-	# Install cryptsetup if we used luks
+	# Install cryptsetup if we used LUKS
 	if [[ $USED_LUKS == "true" ]]; then
 		einfo "Installing cryptsetup"
 		try emerge --verbose sys-fs/cryptsetup
+	fi
+
+	if [[ $SYSTEMD == "true" && $USED_LUKS == "true" ]] ; then
+		einfo "Enabling cryptsetup USE flag on sys-apps/systemd"
+		echo "sys-apps/systemd cryptsetup" > /etc/portage/package.use/systemd \
+			|| die "Could not write /etc/portage/package.use/systemd"
+		einfo "Rebuilding systemd with changed USE flag"
+		try emerge --verbose --changed-use --oneshot sys-apps/systemd
 	fi
 
 	# Install jfsutils if we used jfs
@@ -518,13 +477,13 @@ EOF
 		try emerge --verbose sys-fs/xfsprogs
 	fi
 
-	# Install reiserfsprogs if we used reiserfs
+	# Install reiserfsprogs if we used Reiserfs
 	if [[ $USED_REISERFS == "true" ]]; then
 		einfo "Installing reiserfsprogs"
 		try emerge --verbose sys-fs/reiserfsprogs
 	fi
 
-	# Install btrfs-progs if we used btrfs
+	# Install btrfs-progs if we used Btrfs
 	if [[ $USED_BTRFS == "true" ]]; then
 		einfo "Installing btrfs-progs"
 		try emerge --verbose sys-fs/btrfs-progs
@@ -532,7 +491,7 @@ EOF
 
 	try emerge --verbose dev-vcs/git
 
-	# Install zfs kernel module and tools if we used zfs
+	# Install ZFS kernel module and tools if we used ZFS
 	if [[ $USED_ZFS == "true" ]]; then
 		einfo "Installing zfs"
 		try emerge --verbose sys-fs/zfs sys-fs/zfs-kmod

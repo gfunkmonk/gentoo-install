@@ -7,7 +7,15 @@ source "$GENTOO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
 
 function sync_time() {
 	einfo "Syncing time"
-	try ntpd -g -q
+	if command -v ntpd &> /dev/null; then
+		try ntpd -g -q
+	elif command -v chrony &> /dev/null; then
+		# See https://github.com/oddlama/gentoo-install/pull/122
+		try chronyd -q
+	else
+		# why am I doing this?
+		try date -s "$(curl -sI http://example.com | grep -i ^date: | cut -d' ' -f3-)"
+	fi
 
 	einfo "Current date: $(LANG=C date)"
 	einfo "Writing time to hardware clock"
@@ -27,7 +35,7 @@ function check_config() {
 			|| die "Using OpenRC requires a non-systemd stage3 archive!"
 	fi
 
- 	# Check hostname per RFC1123
+	# Check hostname per RFC1123
 	local hostname_regex='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
 	[[ $HOSTNAME =~ $hostname_regex ]] \
 		|| die "'$HOSTNAME' is not a valid hostname"
@@ -84,6 +92,12 @@ function prepare_installation_environment() {
 
 	[[ $USED_BTRFS == "true" ]] \
 		&& wanted_programs+=(btrfs)
+	[[ $USED_JFS == "true" ]] \
+		&& wanted_programs+=(jfs)
+	[[ $USED_REISERFS == "true" ]] \
+		&& wanted_programs+=(reiserfs)
+	[[ $USED_XFS == "true" ]] \
+		&& wanted_programs+=(xfs)		
 	[[ $USED_ZFS == "true" ]] \
 		&& wanted_programs+=(zfs)
 	[[ $USED_RAID == "true" ]] \
@@ -291,15 +305,23 @@ function disk_create_raid() {
 	local mddevice="/dev/md/$name"
 	local uuid="${DISK_ID_TO_UUID[$new_id]}"
 
+	extra_args=()
+	if [[ "$level" == 1 && "$name" == "efi" ]]; then
+		extra_args+=("--metadata=1.0")
+	else
+		extra_args+=("--metadata=1.2")
+	fi
+
+# See https://serverfault.com/questions/1163715/mdadm-value-arch12021-cannot-be-set-as-devname-reason-not-posix-compatible
 	einfo "Creating raid$level ($new_id) on $devices_desc"
 	mdadm \
 			--create "$mddevice" \
 			--verbose \
-			--homehost="$HOSTNAME" \
-			--metadata=1.2 \
+			--level="$level" \
 			--raid-devices="${#devices[@]}" \
 			--uuid="$uuid" \
-			--level="$level" \
+			--homehost="$HOSTNAME" \
+			"${extra_args[@]}" \
 			"${devices[@]}" \
 		|| die "Could not create raid$level array '$mddevice' ($new_id) on $devices_desc"
 }
@@ -428,33 +450,33 @@ function disk_format() {
 					|| die "Could not format device '$device' ($id)"
 			fi
 			;;
-               'jfs')
-                        if [[ -v "arguments[label]" ]]; then
-                                mkfs.jfs -q -V "$label" "$device" \
-                                        || die "Could not format device '$device' ($id)"
-                        else
-                                mkfs.jfs -q "$device" \
-                                        || die "Could not format device '$device' ($id)"
-                        fi
-                        ;;
-                'xfs')
-                        if [[ -v "arguments[label]" ]]; then
-                                mkfs.xfs -q -L "$label" "$device" \
-                                        || die "Could not format device '$device' ($id)"
-                        else
-                                mkfs.xfs -q "$device" \
-                                        || die "Could not format device '$device' ($id)"
-                        fi
-                        ;;
-                'reiserfs')
-                        if [[ -v "arguments[label]" ]]; then
-                                mkfs.reiserfs -q -l "$label" "$device" \
-                                        || die "Could not format device '$device' ($id)"
-                        else
-                                mkfs.reiserfs -q "$device" \
-                                        || die "Could not format device '$device' ($id)"
-                        fi
-                        ;;
+        'jfs')
+			if [[ -v "arguments[label]" ]]; then
+				mkfs.jfs -q -V "$label" "$device" \
+					|| die "Could not format device '$device' ($id)"
+			else
+				mkfs.jfs -q "$device" \
+					|| die "Could not format device '$device' ($id)"
+			fi
+			;;
+        'xfs')
+			if [[ -v "arguments[label]" ]]; then
+				mkfs.xfs -q -L "$label" "$device" \
+					|| die "Could not format device '$device' ($id)"
+			else
+				mkfs.xfs -q "$device" \
+					|| die "Could not format device '$device' ($id)"
+			fi
+			;;
+        'reiserfs')
+			if [[ -v "arguments[label]" ]]; then
+				mkfs.reiserfs -q -l "$label" "$device" \
+					|| die "Could not format device '$device' ($id)"
+			else
+				mkfs.reiserfs -q "$device" \
+					|| die "Could not format device '$device' ($id)"
+			fi
+			;;
 		'btrfs')
 			if [[ -v "arguments[label]" ]]; then
 				mkfs.btrfs -q -L "$label" "$device" \
@@ -838,7 +860,14 @@ function download_stage3() {
 	cd "$TMP_DIR" \
 		|| die "Could not cd into '$TMP_DIR'"
 
-	local STAGE3_RELEASES="$GENTOO_MIRROR/releases/$GENTOO_ARCH/autobuilds/current-$STAGE3_BASENAME/"
+	local STAGE3_BASENAME_FINAL
+	if [[ ("$GENTOO_ARCH" == "amd64" && "$STAGE3_VARIANT" == *x32*) || ("$GENTOO_ARCH" == "x86" && -n "$GENTOO_SUBARCH") ]]; then
+		STAGE3_BASENAME_FINAL="$STAGE3_BASENAME_CUSTOM"
+	else
+		STAGE3_BASENAME_FINAL="$STAGE3_BASENAME"
+	fi
+
+	local STAGE3_RELEASES="$GENTOO_MIRROR/releases/$GENTOO_ARCH/autobuilds/current-$STAGE3_BASENAME_FINAL/"
 
 	# Download upstream list of files
 	CURRENT_STAGE3="$(download_stdout "$STAGE3_RELEASES")" \
@@ -846,7 +875,7 @@ function download_stage3() {
 	# Decode urlencoded strings
 	CURRENT_STAGE3=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read()))' <<< "$CURRENT_STAGE3")
 	# Parse output for correct filename
-	CURRENT_STAGE3="$(grep -o "\"${STAGE3_BASENAME}-[0-9A-Z]*.tar.xz\"" <<< "$CURRENT_STAGE3" \
+	CURRENT_STAGE3="$(grep -o "\"${STAGE3_BASENAME_FINAL}-[0-9A-Z]*.tar.xz\"" <<< "$CURRENT_STAGE3" \
 		| sort -u | head -1)" \
 		|| die "Could not parse list of tarballs"
 	# Strip quotes
@@ -854,13 +883,13 @@ function download_stage3() {
 	# File to indiciate successful verification
 	CURRENT_STAGE3_VERIFIED="${CURRENT_STAGE3}.verified"
 
-	maybe_exec 'before_download_stage3' "$STAGE3_BASENAME"
+	maybe_exec 'before_download_stage3' "$STAGE3_BASENAME_FINAL"
 
 	# Download file if not already downloaded
 	if [[ -e $CURRENT_STAGE3_VERIFIED ]]; then
-		einfo "$STAGE3_BASENAME tarball already downloaded and verified"
+		einfo "$STAGE3_BASENAME_FINAL tarball already downloaded and verified"
 	else
-		einfo "Downloading $STAGE3_BASENAME tarball"
+		einfo "Downloading $STAGE3_BASENAME_FINAL tarball"
 		download "$STAGE3_RELEASES/${CURRENT_STAGE3}" "${CURRENT_STAGE3}"
 		download "$STAGE3_RELEASES/${CURRENT_STAGE3}.DIGESTS" "${CURRENT_STAGE3}.DIGESTS"
 
@@ -980,12 +1009,7 @@ function gentoo_chroot() {
 	install --mode=0644 /etc/resolv.conf "$chroot_dir/etc/resolv.conf" \
 		|| die "Could not copy resolv.conf"
 
- 	printf "sleep 1" > /tmp/locale-gen
- 	if [[ "$STAGE3_BASENAME" == *musl* ]]
-	    then install --mode=0755 /tmp/locale-gen "$chroot_dir/bin/locale-gen"
-	fi
-
- 	# Mount virtual filesystems
+	# Mount virtual filesystems
 	einfo "Mounting virtual filesystems"
 	(
 		mountpoint -q -- "$chroot_dir/proc" || mount -t proc /proc "$chroot_dir/proc" || exit 1

@@ -1,7 +1,6 @@
 #!/bin/bash
 set -uo pipefail
 
-
 [[ $EXECUTED_IN_CHROOT != "true" ]] \
 	&& { echo "This script must not be executed directly!" >&2; exit 1; }
 
@@ -14,11 +13,10 @@ umask 0077
 # Export variables (used to determine processor count by some applications)
 export NPROC="$(nproc || echo 2)"
 export NPROC_ONE="$((NPROC + 1))"
-export NPROC_TWO="$((NPROC + 2))"
 
 # Set default makeflags and emerge flags for parallel emerges
-export MAKEFLAGS="-j$NPROC -l$NPROC_ONE"
-export EMERGE_DEFAULT_OPTS="--jobs=$NPROC_TWO --load-average=$NPROC_ONE"
+export MAKEFLAGS="-j$NPROC"
+export EMERGE_DEFAULT_OPTS="--jobs=$NPROC_ONE --load-average=$NPROC"
 
 # Unset critical variables
 unset key

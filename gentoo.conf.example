@@ -35,13 +35,13 @@ function disk_configuration() {
 	#
 	# Parameters:
 	#   swap=<size>           Create a swap partition with given size, or no swap
-	#                         at all if set to false
+	#                         at all if set to false.
 	#   type=[efi|bios]       Selects the boot type. Defaults to efi if not given.
 	#   luks=[true|false]     Encrypt root partition. Defaults to false if not given.
-	#   root_fs=[ext4|btrfs]  Root filesystem
+	#   root_fs=[ext4|btrfs]  Root filesystem. Defaults to ext4 if not given.
 	#create_classic_single_disk_layout swap=8GiB type=efi luks=true root_fs=ext4 /dev/sdX
 
-	# 2. create_btrfs_centric_layout
+	# 2. create_zfs_centric_layout
 	#
 	# A modern disk layout designed around ZFS. This layout is the same as the
 	# single_disk_layout, but uses ZFS as the root filesystem and optionally allows
@@ -51,30 +51,47 @@ function disk_configuration() {
 	# encryption feature to encrypt the pool.
 	#
 	# Parameters:
-	#   swap=<size>                Create a swap partition with given size, or no swap
-	#                              at all if set to false
-	#   type=[efi|bios]            Selects the boot type. Defaults to efi if not given.
-	#   encrypt=[true|false]       Encrypt the zfs datasets. Defaults to false if not given.
-	#   compress=[false|<compression>] Compress the zfs datasets. For valid values visit man zfsprops. Defaults to false if not given.
-	#   pool_type=[standard|custom]  Select zfs pool type. Custom pools allow you to do the pool creation yourself. Defaults to standard.
+	#   swap=<size>                     Create a swap partition with given size, or no swap
+	#                                   at all if set to false.
+	#   type=[efi|bios]                 Selects the boot type. Defaults to efi if not given.
+	#   encrypt=[true|false]            Encrypt the zfs datasets. Defaults to false if not given.
+	#   compress=[false|<compression>]  Compress the zfs datasets. For valid values visit man zfsprops. Defaults to false if not given.
+	#   pool_type=[standard|custom]     Select zfs pool type. Custom pools allow you to do the pool creation yourself. Defaults to standard.
 	#create_zfs_centric_layout type=efi swap=8GiB encrypt=true compress=zstd pool_type=standard
 
 	# 3. create_raid0_luks_layout
 	#
 	# This layout creates the single disk layout on multiple disks and combines
-	# the swap and root partitions in separate raid0 arrays. Useful if you e.g. have
+	# the swap and root partitions in separate RAID0 arrays. Useful if you e.g. have
 	# several nvme drives and want increased speed. Only one boot partition will actually
 	# be used though.
 	#
 	# Parameters:
 	#   swap=<size>           Create a swap partition with given size for each disk,
-	#                         or no swap at all if set to false
+	#                         or no swap at all if set to false.
 	#   type=[efi|bios]       Selects the boot type. Defaults to efi if not given.
-	#   root_fs=[ext4|btrfs]  Root filesystem
+	#   luks=[true|false]     Encrypt root partition. Defaults to true if not given.
+	#   root_fs=[ext4|btrfs]  Root filesystem. Defaults to ext4 if not given.
 	# Careful: You will get N times the swap amount, so be sure to divide beforehand.
 	#create_raid0_luks_layout swap=4GiB type=efi root_fs=ext4 /dev/sd{X,Y}
 
-	# 4. create_btrfs_centric_layout
+	# 4. create_raid1_luks_layout
+	#
+	# This layout creates the single disk layout on multiple disks and combines
+	# the boot, swap, and root partitions in separate RAID1 arrays. Useful if you e.g. have
+	# several nvme drives and want data redundancy. Each drive will have the boot partition mirrored.
+	# If one drive fails, the system can still boot from another drive in the array.
+	#
+	# Parameters:
+	#   swap=<size>           Create a swap partition with given size for each disk,
+	#                         or no swap at all if set to false.
+	#   type=[efi|bios]       Selects the boot type. Defaults to efi if not given.
+	#   luks=[true|false]     Encrypt root partition. Defaults to true if not given.
+	#   root_fs=[ext4|btrfs]  Root filesystem. Defaults to ext4 if not given.
+	# Careful: You will get N times the swap amount, so be sure to divide beforehand.
+	#create_raid1_luks_layout swap=4GiB type=efi root_fs=ext4 /dev/sd{X,Y}
+
+	# 5. create_btrfs_centric_layout
 	#
 	# This layout is the same as the single_disk_layout, but uses btrfs as the root
 	# filesystem and allows you to put additional disks into the btrfs device pool.
@@ -84,12 +101,12 @@ function disk_configuration() {
 	# Also works with a single device.
 	#
 	# Parameters:
-	#   swap=<size>                Create a swap partition with given size, or no swap
-	#                              at all if set to false
-	#   type=[efi|bios]            Selects the boot type. Defaults to efi if not given.
-	#   luks=[true|false]          Encrypt root partition and btrfs devices. Defaults
-	#                              to false if not given.
-	#   raid_type=[raid0|raid1]    Select raid type. Defaults to raid0.
+	#   swap=<size>              Create a swap partition with given size, or no swap
+	#                            at all if set to false.
+	#   type=[efi|bios]          Selects the boot type. Defaults to efi if not given.
+	#   luks=[true|false]        Encrypt root partition and btrfs devices. Defaults
+	#                            to false if not given.
+	#   raid_type=[raid0|raid1]  Select raid type. Defaults to raid0.
 	#create_btrfs_centric_layout swap=8GiB luks=false raid_type=raid0 /dev/sd{X,Y}
 	#create_btrfs_centric_layout swap=8GiB luks=true /dev/sdX
 }
@@ -183,27 +200,28 @@ KEYMAP_INITRAMFS="$KEYMAP"
 
 # A list of additional locales to generate. You should only
 # add locales here if you really need them and want to localize
-# your system. Otherwise, leave this list empty, and use "C.utf8" as the locale.
+# your system. Otherwise, leave this list empty, and use "C.UTF-8" as the locale.
 # Be careful that the syntax for locales is a bit different from the name of the resulting
 # locale. For a list of supported locales, see the file /usr/share/i18n/SUPPORTED.
 LOCALES=""
 # The locale to set for the system. Be careful, the locale names deviate from the LOCALES
 # list entries (e.g. .UTF-8 vs .utf8). See `locale -a` for all available locales.
-LOCALE="C.utf8"
-# For a german system you could use:
+# Although `locale -a` lists the suffix in lower case without any hyphens, it is best to always use UTF-8 in preference to utf8.
+LOCALE="C.UTF-8"
+# For a German system you could use:
 # LOCALES="
 # de_DE.UTF-8 UTF-8
 # de_DE ISO-8859-1
 # de_DE@euro ISO-8859-15
 # " # End of LOCALES
-# LOCALE="de_DE.utf8"
+# LOCALE="de_DE.UTF-8"
 
 
 ################################################
 # Network configuration
 
 # The following network configuration only applies to systemd
-# configurations and will otherwise be ignore. All openrc based
+# configurations and will otherwise be ignored. All OpenRC based
 # configurations always just starts dhcpcd.
 
 # Enable systemd-networkd to configure internet
@@ -239,21 +257,27 @@ GENTOO_MIRROR="https://mirror.eu.oneandone.net/linux/distributions/gentoo/gentoo
 
 # The architecture of the target system (only tested with amd64)
 GENTOO_ARCH="amd64"
+# The sub-architecture for x86 targets (e.g., i486, i686)
+GENTOO_SUBARCH=""
 
 # The stage3 tarball variant to use. Determines whether systemd
-# or openrc is used based on whether "systemd" is contained in this string.
+# or OpenRC is used based on whether "systemd" is contained in this string.
 STAGE3_VARIANT="systemd"
 # The stage3 tarball to download and bootstrap
 STAGE3_BASENAME="stage3-$GENTOO_ARCH-$STAGE3_VARIANT"
+# The stage3 tarball to download and bootstrap (for edge cases where specific tarball names are required, such as for x32 architecture or x86 sub-architectures)
+STAGE3_BASENAME_CUSTOM=$([[ $STAGE3_VARIANT == *x32* ]] && echo "stage3-$STAGE3_VARIANT" || echo "stage3-$GENTOO_SUBARCH-$STAGE3_VARIANT")
 # Automatically set to true, if the stage3 tarball is based on systemd. In this case
 # we need to use slightly different utilities to setup the base system.
 SYSTEMD=$([[ $STAGE3_VARIANT == *systemd* ]] && echo "true" || echo "false")
+# Automatically set to true, if the stage3 tarball is based on musl.
+MUSL=$([[ $STAGE3_VARIANT == *musl* ]] && echo "true" || echo "false")
 
 # If set to true, the installer will add ACCEPT_KEYWORDS="~$GENTOO_ARCH"
 # to /etc/portage/make.conf to enable packages in testing.
 USE_PORTAGE_TESTING=true
 
-# If set to true, the best best gentoo mirrors will be selected
+# If set to true, the best gentoo mirrors will be selected
 # automatically by app-portage/mirrorselect
 SELECT_MIRRORS=true
 
@@ -273,6 +297,9 @@ ADDITIONAL_PACKAGES=()
 # Install and configure sshd (a reasonably secure config is provided, which
 # only allows the use of ed25519 keys, and requires pubkey authentication)
 ENABLE_SSHD=true
+
+# Enable binary portage packages where available
+ENABLE_BINPKG=false
 
 # An ssh key to add to the authorized_keys file for the root user.
 # This variable will become the content of the authorized_keys file,
