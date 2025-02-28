@@ -93,11 +93,11 @@ function prepare_installation_environment() {
 	[[ $USED_BTRFS == "true" ]] \
 		&& wanted_programs+=(btrfs)
 	[[ $USED_JFS == "true" ]] \
-		&& wanted_programs+=(jfs)
+		&& wanted_programs+=(jfsutils)
 	[[ $USED_REISERFS == "true" ]] \
-		&& wanted_programs+=(reiserfs)
+		&& wanted_programs+=(reiserfsprogs)
 	[[ $USED_XFS == "true" ]] \
-		&& wanted_programs+=(xfs)		
+		&& wanted_programs+=(xfsprogs)		
 	[[ $USED_ZFS == "true" ]] \
 		&& wanted_programs+=(zfs)
 	[[ $USED_RAID == "true" ]] \
