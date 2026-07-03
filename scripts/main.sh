@@ -13,11 +13,18 @@ function install_stage3() {
 }
 
 function configure_base_system() {
+	if [[ $MUSL == "true" ]]; then
+		einfo "Installing musl-locales"
+		try emerge --verbose sys-apps/musl-locales
+		echo 'MUSL_LOCPATH="/usr/share/i18n/locales/musl"' >> /etc/env.d/00local \
+			|| die "Could not write to /etc/env.d/00local"
+	else
 	einfo "Generating locales"
 	echo "$LOCALES" > /etc/locale.gen \
 		|| die "Could not write /etc/locale.gen"
 	locale-gen \
 		|| die "Could not generate locales"
+	fi
 
 	if [[ $SYSTEMD == "true" ]]; then
 		einfo "Setting machine-id"
@@ -49,12 +56,19 @@ function configure_base_system() {
 			|| die "Could not sed replace in /etc/conf.d/hostname"
 
 		# Set timezone
+		if [[ $MUSL == "true" ]]; then
+			try emerge -v sys-libs/timezone-data
+			einfo "Selecting timezone"
+			echo -e "TZ=\"$TIMEZONE\"" >> /etc/env.d/00local \
+				|| die "Could not write to /etc/env.d/00local"
+		else
 		einfo "Selecting timezone"
 		echo "$TIMEZONE" > /etc/timezone \
 			|| die "Could not write /etc/timezone"
 		chmod 644 /etc/timezone \
 			|| die "Could not set correct permissions for /etc/timezone"
 		try emerge -v --config sys-libs/timezone-data
+		fi
 
 		# Set keymap
 		einfo "Selecting keymap"
@@ -188,6 +202,12 @@ function configure_portage() {
 	sed_make
 
 
+	if [[ $ENABLE_BINPKG == "true" ]]; then
+		echo 'FEATURES="getbinpkg binpkg-request-signature"' >> $(get_make)
+		getuto
+		chmod 644 /etc/portage/gnupg/pubring.kbx
+	fi
+
 	chmod 644 /etc/portage/make.conf \
 		|| die "Could not chmod 644 /etc/portage/make.conf"
 }
@@ -298,29 +318,57 @@ function install_kernel_efi() {
 
 	# Copy kernel to EFI
 	local kernel_file
-	kernel_file="$(find "/boot" -name "vmlinuz-*" -printf '%f\n' | sort -V | tail -n 1)" \
+	kernel_file="$(find "/boot" \( -name "vmlinuz-*" -or -name 'kernel-*' \) -printf '%f\n' | sort -V | tail -n 1)" \
 		|| die "Could not list newest kernel file"
 
-	cp "/boot/$kernel_file" "/boot/efi/vmlinuz.efi" \
-		|| die "Could not copy kernel to EFI partition"
+	try cp "/boot/$kernel_file" "/boot/efi/vmlinuz.efi"
 
 	# Generate initramfs
 	generate_initramfs "/boot/efi/initramfs.img"
 
 	# Create boot entry
-	einfo "Creating efi boot entry"
+	einfo "Creating EFI boot entry"
 	local efipartdev
 	efipartdev="$(resolve_device_by_id "$DISK_ID_EFI")" \
 		|| die "Could not resolve device with id=$DISK_ID_EFI"
 	efipartdev="$(realpath "$efipartdev")" \
 		|| die "Error in realpath '$efipartdev'"
+
+	# Get the sysfs path to EFI partition
 	local sys_efipart
 	sys_efipart="/sys/class/block/$(basename "$efipartdev")" \
-		|| die "Could not construct /sys path to efi partition"
+		|| die "Could not construct /sys path to EFI partition"
+
+	# Extract partition number, handling both standard and RAID cases
 	local efipartnum
+	if [[ -e "$sys_efipart/partition" ]]; then
 	efipartnum="$(cat "$sys_efipart/partition")" \
 		|| die "Failed to find partition number for EFI partition $efipartdev"
+	else
+		efipartnum="1" # Assume partition 1 if not found, common for RAID-based EFI
+		einfo "Assuming partition 1 for RAID-based EFI on device $efipartdev"
+	fi
+
+	# Identify the parent block device and create EFI boot entry
 	local gptdev
+	if mdadm --detail --scan "$efipartdev" | grep -qE "^ARRAY $efipartdev " && [[ "$efipartdev" =~ ^/dev/md[0-9]+$ ]]; then
+		# RAID 1 case: Create EFI boot entries for each RAID member
+		local raid_members
+		raid_members=($(mdadm --detail "$efipartdev" | sed -n 's|.*active sync[^/]*\(/dev/[^ ]*\).*|\1|p' | sort))
+
+		if [[ ${#raid_members[@]} -eq 0 ]]; then
+			die "RAID setup detected, but no valid member disks found for $efipartdev"
+		fi
+
+		einfo "RAID detected. RAID members: ${raid_members[*]}"
+
+		for disk in "${raid_members[@]}"; do
+			gptdev="$disk"
+			einfo "Adding EFI boot entry for RAID member: $gptdev"
+			try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "gentoo" --loader '\vmlinuz.efi' --unicode "initrd=\\initramfs.img $(get_cmdline)"
+		done
+	else
+		# Non-RAID case: Create a single EFI boot entry
 	gptdev="/dev/$(basename "$(readlink -f "$sys_efipart/..")")" \
 		|| die "Failed to find parent device for EFI partition $efipartdev"
 	if [[ ! -e "$gptdev" ]] || [[ -z "$gptdev" ]]; then
@@ -328,6 +376,7 @@ function install_kernel_efi() {
 			|| die "Could not resolve device with id=${DISK_ID_PART_TO_GPT_ID[$DISK_ID_EFI]}"
 	fi
 	try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "gentoo" --loader '\vmlinuz.efi' --unicode 'initrd=\initramfs.img'" $(get_cmdline)"
+	fi
 
 	# Create script to repeat adding efibootmgr entry
 	cat > "/boot/efi/efibootmgr_add_entry.sh" <<EOF
@@ -355,11 +404,10 @@ function install_kernel_bios() {
 
 	# Link kernel to known name
 	local kernel_file
-	kernel_file="$(find "/boot" -name "vmlinuz-*" -printf '%f\n' | sort -V | tail -n 1)" \
+	kernel_file="$(find "/boot" \( -name "vmlinuz-*" -or -name 'kernel-*' \) -printf '%f\n' | sort -V | tail -n 1)" \
 		|| die "Could not list newest kernel file"
 
-	cp "/boot/$kernel_file" "/boot/bios/vmlinuz-current" \
-		|| die "Could copy kernel to /boot/bios/vmlinuz-current"
+	try cp "/boot/$kernel_file" "/boot/bios/vmlinuz-current"
 
 	# Generate initramfs
 	generate_initramfs "/boot/bios/initramfs.img"
@@ -433,6 +481,16 @@ function main_install_gentoo_in_chroot() {
 	passwd -d root \
 		|| die "Could not change root password"
 
+	# Sync portage
+	einfo "Syncing portage tree"
+	try emerge-webrsync
+
+	# Install mdadm if we used RAID (needed for UUID resolving)
+	if [[ $USED_RAID == "true" ]]; then
+		einfo "Installing mdadm"
+		try emerge --verbose sys-fs/mdadm
+	fi
+
 	if [[ $IS_EFI == "true" ]]; then
 		# Mount efi partition
 		mount_efivars
@@ -443,10 +501,6 @@ function main_install_gentoo_in_chroot() {
 		einfo "Mounting bios partition"
 		mount_by_id "$DISK_ID_BIOS" "/boot/bios"
 	fi
-
-	# Sync portage
-	einfo "Syncing portage tree"
-	try emerge-webrsync
 
 	# Configure basic system things like timezone, locale, ...
 	maybe_exec 'before_configure_base_system'
@@ -490,20 +544,32 @@ EOF
 	# Install authorized_keys before dracut, which might need them for remote unlocking.
 	install_authorized_keys
 
-	# Install required programs and kernel now, in oder to
-	# prevent emerging module before an imminent kernel upgrade
-	try emerge --verbose sys-kernel/dracut sys-kernel/gentoo-kernel-bin app-arch/zstd
+	einfo "Enabling dracut USE flag on sys-kernel/installkernel"
+	echo "sys-kernel/installkernel dracut" > /etc/portage/package.use/installkernel \
+		|| die "Could not write /etc/portage/package.use/installkernel"
 
-	# Install mdadm if we used raid (needed for uuid resolving)
-	if [[ $USED_RAID == "true" ]]; then
-		einfo "Installing mdadm"
-		try emerge --verbose sys-fs/mdadm
+	# Install required programs and kernel now, in order to
+	# prevent emerging module before an imminent kernel upgrade
+	if [[ "${KERNEL_TYPE:-bin}" == "source" ]]; then
+		einfo "Building kernel from source (sys-kernel/gentoo-kernel)"
+		try emerge --verbose sys-kernel/dracut sys-kernel/gentoo-kernel app-arch/zstd
+	else
+		einfo "Installing binary kernel (sys-kernel/gentoo-kernel-bin)"
+	try emerge --verbose sys-kernel/dracut sys-kernel/gentoo-kernel-bin app-arch/zstd
 	fi
 
-	# Install cryptsetup if we used luks
+	# Install cryptsetup if we used LUKS
 	if [[ $USED_LUKS == "true" ]]; then
 		einfo "Installing cryptsetup"
 		try emerge --verbose sys-fs/cryptsetup
+	fi
+
+	if [[ $SYSTEMD == "true" && $USED_LUKS == "true" ]] ; then
+		einfo "Enabling cryptsetup USE flag on sys-apps/systemd"
+		echo "sys-apps/systemd cryptsetup" > /etc/portage/package.use/systemd \
+			|| die "Could not write /etc/portage/package.use/systemd"
+		einfo "Rebuilding systemd with changed USE flag"
+		try emerge --verbose --changed-use --oneshot sys-apps/systemd
 	fi
 
 	# Install jfsutils if we used jfs
@@ -532,7 +598,7 @@ EOF
 
 	try emerge --verbose dev-vcs/git
 
-	# Install zfs kernel module and tools if we used zfs
+	# Install ZFS kernel module and tools if we used ZFS
 	if [[ $USED_ZFS == "true" ]]; then
 		einfo "Installing zfs"
 		try emerge --verbose sys-fs/zfs sys-fs/zfs-kmod

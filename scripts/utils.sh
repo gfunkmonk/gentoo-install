@@ -417,8 +417,8 @@ function check_wanted_programs() {
 					&& need_zfs=true
 
 				if [[ -v "pacman_packages[$program]" ]]; then
-					# Assignments to the empty string are explcitly ignored,
-					# as for example zfs needs to be handeled separately.
+					# Assignments to the empty string are explicitly ignored,
+					# as for example, zfs needs to be handled separately.
 					[[ -n "${pacman_packages[$program]}" ]] \
 						&& packages+=("${pacman_packages[$program]}")
 				else
@@ -437,12 +437,29 @@ function check_wanted_programs() {
 
 			return
 		fi
-	fi
+	elif type emerge &>/dev/null; then
+		elog "Detected Portage (emerge) package manager."
+		if ask "Do you want to install all missing programs automatically?"; then
+			elog "Updating Portage repository cache..."
+			emerge --sync || die "Failed to synchronize Portage repositories."
 
-	if [[ "${#missing_required[@]}" -gt 0 ]]; then
-		die "Aborted installer because of missing required programs."
+			for program in "${missing_required[@]}" "${missing_wanted[@]}"; do
+				if [[ "$program" == "ntpd" ]]; then
+					elog "Installing ntpd using emerge..."
+					emerge --ask ntp || die "Failed to install ntpd."
+				else
+					elog "You need to manually install $program."
+				fi
+			done
+		fi
+	elif type curl &>/dev/null; then
+		:
 	else
-		ask "Continue without recommended programs?"
+		if [[ "${#missing_required[@]}" -gt 0 ]]; then
+			die "Aborted installer because of missing required programs."
+		else
+			ask "Continue without recommended programs?"
+		fi
 	fi
 }
 
